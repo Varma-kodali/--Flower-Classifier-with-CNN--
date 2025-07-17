@@ -1,0 +1,64 @@
+# STEP 1: Download and save 1 image per class
+import os
+import requests
+from PIL import Image
+from io import BytesIO
+import shutil
+
+# URLs for 1 image per class
+image_data = {
+    "daisy": "https://lh6.googleusercontent.com/-15g_m2Gb3Ao/TY0ks1_lgfI/AAAAAAAAAEQ/NZ-1nKg0GHk/s1600/white+daisy.jpg",
+    "sunflower": "https://images.pexels.com/photos/635529/pexels-photo-635529.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "rose": "https://cdn.pixabay.com/photo/2017/10/24/18/17/rose-2885586_960_720.jpg"
+}
+
+# Download 1 image per class
+for label, url in image_data.items():
+    folder = f'pollen_data/{label}'
+    os.makedirs(folder, exist_ok=True)
+    img_path = f'{folder}/{label}.jpg'
+    response = requests.get(url)
+    img = Image.open(BytesIO(response.content)).convert('RGB')
+    img.save(img_path)
+
+    # STEP 2: Duplicate image for validation
+    shutil.copy(img_path, f'{folder}/{label}_copy.jpg')
+
+# STEP 3: Setup data generators with 50% validation
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras import layers, models
+
+datagen = ImageDataGenerator(rescale=1./255, validation_split=0.5)
+
+train_data = datagen.flow_from_directory(
+    'pollen_data/',
+    target_size=(64, 64),
+    batch_size=1,
+    class_mode='categorical',
+    subset='training',
+    seed=1
+)
+
+val_data = datagen.flow_from_directory(
+    'pollen_data/',
+    target_size=(64, 64),
+    batch_size=1,
+    class_mode='categorical',
+    subset='validation',
+    seed=1
+)
+
+# STEP 4: Build small CNN model
+model = models.Sequential([
+    layers.Conv2D(16, (3, 3), activation='relu', input_shape=(64, 64, 3)),
+    layers.MaxPooling2D(2, 2),
+    layers.Flatten(),
+    layers.Dense(3, activation='softmax')
+])
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# STEP 5: Train and save
+model.fit(train_data, epochs=2, validation_data=val_data)
+model.save("demo_pollen_model.h5")
